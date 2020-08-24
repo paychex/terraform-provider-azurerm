@@ -137,6 +137,8 @@ func resourceArmLinuxVirtualMachineScaleSet() *schema.Resource {
 				}, false),
 			},
 
+			"extension": VirtualMachineScaleSetExtensionsSchema(),
+
 			"health_probe_id": {
 				Type:         schema.TypeString,
 				Optional:     true,
@@ -243,8 +245,6 @@ func resourceArmLinuxVirtualMachineScaleSet() *schema.Resource {
 			},
 
 			"terminate_notification": VirtualMachineScaleSetTerminateNotificationSchema(),
-
-			"vm_extension": VirtualMachineScaleSetExtensionsSchema(),
 
 			"zones": azure.SchemaZones(),
 
@@ -399,10 +399,8 @@ func resourceArmLinuxVirtualMachineScaleSetCreate(d *schema.ResourceData, meta i
 		},
 	}
 
-	useExtensionsBeta := meta.(*clients.Client).Features.VirtualMachineScaleSet.UseExtensionsBeta
-
-	if useExtensionsBeta {
-		if vmExtensionsRaw, ok := d.GetOk("vm_extension"); ok {
+	if features.VMSSExtensionsBeta() {
+		if vmExtensionsRaw, ok := d.GetOk("extension"); ok {
 			virtualMachineProfile.ExtensionProfile = expandVirtualMachineScaleSetExtensions(vmExtensionsRaw.([]interface{}))
 		}
 	}
@@ -741,11 +739,11 @@ func resourceArmLinuxVirtualMachineScaleSetUpdate(d *schema.ResourceData, meta i
 		update.Sku = sku
 	}
 
-	useExtensionsBeta := meta.(*clients.Client).Features.VirtualMachineScaleSet.UseExtensionsBeta
+	if features.VMSSExtensionsBeta() {
+		if d.HasChange("extension") {
+			updateInstances = true
 
-	if useExtensionsBeta {
-		if d.HasChange("vm_extension") {
-			extensionProfile := expandVirtualMachineScaleSetExtensions(d.Get("vm_extension").([]interface{}))
+			extensionProfile := expandVirtualMachineScaleSetExtensions(d.Get("extension").([]interface{}))
 			updateProps.VirtualMachineProfile.ExtensionProfile = extensionProfile
 		}
 	}
@@ -928,15 +926,15 @@ func resourceArmLinuxVirtualMachineScaleSetRead(d *schema.ResourceData, meta int
 			}
 		}
 
-		useExtensionsBeta := meta.(*clients.Client).Features.VirtualMachineScaleSet.UseExtensionsBeta
-
-		if useExtensionsBeta {
+		if features.VMSSExtensionsBeta() {
 			if profile.ExtensionProfile != nil {
 				if extensionProfile, err := flattenVirtualMachineScaleSetExtensions(profile.ExtensionProfile, d); err != nil {
 					return fmt.Errorf("failed flettening `vm_extension`: %+v", err)
-				} else if err := d.Set("vm_extension", extensionProfile); err != nil {
+				} else if err := d.Set("extension", extensionProfile); err != nil {
 					return fmt.Errorf("failed to set vm_extension: %+v", err)
 				}
+			} else {
+				d.Set("extension", []map[string]interface{}{})
 			}
 		}
 	}
